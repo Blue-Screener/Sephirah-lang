@@ -15,6 +15,8 @@ class SephirahInterpreter:
             return self.stack.pop()
         def length(self):
             return len(self.stack)
+        def print(self):
+            print(self.stack)
         
     class SephirahRuntimeError(Exception):
         """Sephirah 解释器运行时发生的错误"""
@@ -82,13 +84,20 @@ class SephirahInterpreter:
             
         elif seph == 4:
             self.loopStack.push(self.progCnt)
+            # self.loopStack.print()
             
         elif seph == 5:
             if self.tape[self.p] != 0:
                 if self.loopStack.empty():
                     raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Sephirah ")" has nowhere to go.')
                 else:
-                    self.progCnt = self.loopStack.peek() - 1
+                    x = self.progCnt
+                    # self.progCnt = self.loopStack.peek() - 1
+                    # self.loopStack.pop()
+                    # self.loopStack.print()
+                    self.progCnt = self.loopStack.pop() - 1
+                    # print(f"{x + 1} line ) to {self.progCnt + 1}")
+                    # self.loopStack.print()
                     return
             else:
                 if not self.loopStack.empty():
@@ -147,7 +156,19 @@ class SephirahInterpreter:
         else:
             raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Undefined Sephirah number.')
     
-    def run(self, debug=0, longTapeWarning=-1):
+    def createDebugLine(self, add=1):
+        """创建一行调试信息"""
+        debugLine = f'DEBUG: Line {(self.progCnt + add):04d} [ '
+        for i in range(len(self.tape)):
+            if self.tapeIsSeph[i]:
+                debugLine += f'[{"0+^v()ga-n"[self.tape[i] % 10]}] '
+            else:
+                debugLine += f'{self.tape[i]:04d} '
+        debugLine += f'] OUTPUT: {self.outputBuffer}\n'
+        debugLine += '                 ' + '     ' * self.p + '   ^'
+        return debugLine
+    
+    def run(self, debug=0, longTapeWarning=-1, mrkOnly = False):
         """
         运行Sephirah程序。
         
@@ -159,34 +180,34 @@ class SephirahInterpreter:
         self.reset()
         
         endByZero = None # 标志变量，检测程序是否因为遇到行中0而结束。
+        tapeTooLong = False 
         
         debugLog = [] # 调试信息
         
         if debug > 0:
-            print(f'===Running Sephirah code [DEBUG MODE] started===')
+            if mrkOnly:
+                print(f'===Running Sephirah code [DEBUG MODE - Mark Only] started===')
+            else:
+                print(f'===Running Sephirah code [DEBUG MODE] started===')
         else:
             print(f'===Running Sephirah code started===')
         
-        if debug > 0:
-            debugLine = f'DEBUG: Line {self.progCnt:03d} [ '
-            # print(f'DEBUG: Line {self.progCnt:03d}', end=' [ ')
-            for i in range(len(self.tape)):
-                if self.tapeIsSeph[i]:
-                    debugLine += f'[{"0+^v()ga-n"[self.tape[i] % 10]}] '
-                    # print(f'[{"0+^v()ga-n"[self.tape[i] % 10]}]', end=' ')
-                else:
-                    debugLine += f'{self.tape[i]:03d} '
-                    # print(f'{self.tape[i]:03d}', end=' ')
-            debugLine += f'] OUTPUT: {self.outputBuffer}\n'
-            debugLine += '                 ' + '    ' * self.p + '  ^'
-            # print(f'] OUTPUT: {self.outputBuffer}')
-            # print('                 ' + '    ' * self.p + '  ^')
-            print(debugLine)
-            if debug == 2:
+        if not mrkOnly and debug > 0:
+            debugLine = self.createDebugLine()
+            if debug < 3:
+                    print(debugLine)
+            if debug >= 2:
                 debugLog.append(debugLine)
             
         while self.progCnt < self.progLen:
             line = self.codeLines[self.progCnt]
+            
+            if 'mrk' in line.lower() and debug > 0 and mrkOnly:
+                debugLine = self.createDebugLine(add=0)
+                if debug < 3:
+                    print(debugLine)
+                if debug >= 2:
+                    debugLog.append(debugLine)
             
             if line[0] != '0':
                 # 如果开头不是0则忽略本行
@@ -242,26 +263,18 @@ class SephirahInterpreter:
                 else:
                     raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Undefined symbol "{ch}".')
             
-            if debug > 0:
-                debugLine = f'DEBUG: Line {(self.progCnt + 1):03d} [ '
-                # print(f'DEBUG: Line {(self.progCnt + 1):03d}', end=' [ ')
-                for i in range(len(self.tape)):
-                    if self.tapeIsSeph[i]:
-                        debugLine += f'[{"0+^v()ga-n"[self.tape[i] % 10]}] '
-                        # print(f'[{"0+^v()ga-n"[self.tape[i] % 10]}]', end=' ')
-                    else:
-                        debugLine += f'{self.tape[i]:03d} '
-                        # print(f'{self.tape[i]:03d}', end=' ')
-                debugLine += f'] OUTPUT: {self.outputBuffer}\n'
-                debugLine += '                 ' + '    ' * self.p + '  ^'
-                # print(f'] OUTPUT: {self.outputBuffer}')
-                # print('                 ' + '    ' * self.p + '  ^')
-                print(debugLine)
-                if debug == 2:
+            if not mrkOnly and debug > 0:
+                debugLine = self.createDebugLine()
+                if debug < 3:
+                    print(debugLine)
+                if debug >= 2:
                     debugLog.append(debugLine)
                 
             if longTapeWarning >= 0 and len(self.tape) >= longTapeWarning:
-                raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: The tape is too long (more than {longTapeWarning} cells).')
+                # print(len(self.tape))
+                # raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: The tape is too long (more than {longTapeWarning} cells).')
+                tapeTooLong = True
+                break 
             
             if endByZero is not None:
                 break
@@ -269,14 +282,16 @@ class SephirahInterpreter:
             self.progCnt += 1
             
         if self.outputBuffer != '' and not debug:
-            print(f'Output: {self.outputBuffer}')
+            print(self.outputBuffer)
         
         if endByZero is not None:
-            print(f'===Running Sephirah code ended by Sephirah "0" in Line {endByZero + 1}===')
+            print(f'===Running Sephirah code stopped by Sephirah "0" in Line {endByZero + 1}===')
+        elif tapeTooLong:
+            print(f'===Running Sephirah code stopped because the tape is too long (more than {longTapeWarning} cells)===')
         else:
             print('===Running Sephirah code finished===')
         
-        if debug == 2:
+        if debug >= 2:
             with open('debug.log', 'w', encoding='utf-8') as file:
                 file.write('\n'.join(debugLog))
             print('Debug log written into file "debug.log".')
@@ -293,20 +308,27 @@ if __name__ == "__main__":
     debugmode = 0
     if 'debugout' in codeLines[0].lower():
         debugmode = 2
+    elif 'debuglog' in codeLines[0].lower():
+        debugmode = 3
     elif 'debug' in codeLines[0].lower():
         debugmode= 1
+    
+    if 'mrkonly' in codeLines[0].lower():
+        mrkOnlyMode = True
 
     longTapeWarningMode = -1
     if 'ltw16' in codeLines[0].lower():
         longTapeWarningMode = 16
     elif 'ltw32' in codeLines[0].lower():
         longTapeWarningMode = 32
-    elif 'ltw64' in codeLines[0].lower() or 'ltw' in codeLines[0].lower():
+    elif 'ltw64' in codeLines[0].lower():
         longTapeWarningMode = 64
     elif 'ltw128' in codeLines[0].lower():
         longTapeWarningMode = 128
     elif 'ltw256' in codeLines[0].lower():
         longTapeWarningMode = 256
+    elif 'ltw' in codeLines[0].lower():
+        longTapeWarningMode = 64
 
     interp = SephirahInterpreter(codeLines)
-    interp.run(debug=debugmode, longTapeWarning=longTapeWarningMode)
+    interp.run(debug=debugmode, longTapeWarning=longTapeWarningMode, mrkOnly = mrkOnlyMode)
