@@ -91,14 +91,14 @@ class SephirahInterpreter:
                 if self.loopStack.empty():
                     raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Sephirah ")" has nowhere to go.')
                 else:
-                    x = self.progCnt
+                    # x = self.progCnt
                     # self.progCnt = self.loopStack.peek() - 1
                     # self.loopStack.pop()
                     # self.loopStack.print()
                     self.progCnt = self.loopStack.pop() - 1
                     # print(f"{x + 1} line ) to {self.progCnt + 1}")
                     # self.loopStack.print()
-                    return
+                    # return
             else:
                 if not self.loopStack.empty():
                     self.loopStack.pop()
@@ -305,14 +305,15 @@ if __name__ == "__main__":
     if codeLines is None:
         raise FileNotFoundError(f'Connot find Sephirah code file: "{FILENAME}".')
 
-    debugmode = 0
+    debugMode = 0
     if 'debugout' in codeLines[0].lower():
-        debugmode = 2
+        debugMode = 2
     elif 'debuglog' in codeLines[0].lower():
-        debugmode = 3
+        debugMode = 3
     elif 'debug' in codeLines[0].lower():
-        debugmode= 1
+        debugMode= 1
     
+    mrkOnlyMode = False
     if 'mrkonly' in codeLines[0].lower():
         mrkOnlyMode = True
 
@@ -331,4 +332,4 @@ if __name__ == "__main__":
         longTapeWarningMode = 64
 
     interp = SephirahInterpreter(codeLines)
-    interp.run(debug=debugmode, longTapeWarning=longTapeWarningMode, mrkOnly = mrkOnlyMode)
+    interp.run(debug=debugMode, longTapeWarning=longTapeWarningMode, mrkOnly = mrkOnlyMode)
