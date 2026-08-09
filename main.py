@@ -1,6 +1,9 @@
 class SephirahInterpreter:
     """Sephirah语言解释器"""
     
+    SEPH_MAP = {c: i for i, c in enumerate('0+^v()ga-n')} # Sephirah的字典
+    
+    
     class Stack:
         """一个栈。"""
         def __init__(self):
@@ -17,21 +20,62 @@ class SephirahInterpreter:
             return len(self.stack)
         def print(self):
             print(self.stack)
+    
+    
+    class RuntimeOptions:
+        """运行选项"""
+        def __init__(self, line=None, debug=False, printOut=False, log=False, mrkOnly=False, ltw=-1):
+            self.debug = debug # 是否生成调试信息
+            self.printOut = printOut # 是否将调试信息输出至控制台
+            self.log = log # 是否储存到文件
+            self.mrkOnly = mrkOnly # 是否仅在mrk处输出调试信息
+            self.ltw = ltw # 长纸带警告阈值（-1表示关闭）
+            
+            self.logName = "debug.log"
+            
+            if line is not None:
+                self.parser(line)
         
+        def parser(self, line, defaultLtw=64):
+            line = line.lower()
+            
+            if 'debug' in line:
+                self.debug = True 
+                if 'debugout' in line:
+                    self.printOut = True
+                    self.log = True
+                elif 'debuglog' in line:
+                    self.log = True
+                else:
+                    self.printOut = True
+            
+            if 'mrkonly' in line:
+                self.mrkOnly = True 
+            
+            if 'ltw' in line:
+                if 'ltw16' in line:
+                    self.ltw = 16
+                elif 'ltw32' in line:
+                    self.ltw = 32
+                elif 'ltw64' in line:
+                    self.ltw = 64
+                elif 'ltw128' in line:
+                    self.ltw = 128
+                elif 'ltw256' in line:
+                    self.ltw = 256
+                else:
+                    self.ltw = defaultLtw
+    
+    
     class SephirahRuntimeError(Exception):
         """Sephirah 解释器运行时发生的错误"""
         pass
     
+    
     def __init__(self, codeLines):
-        """
-        初始化解释器
-        
-        Args:
-            codeLines: 源代码行列表
-        """
+        """初始化解释器"""
         self.codeLines = codeLines
         self.progLen = len(codeLines)
-        self.instruction_map = {c: i for i, c in enumerate('0+^v()ga-n')}
         self.reset()
     
     def reset(self):
@@ -42,6 +86,7 @@ class SephirahInterpreter:
         self.p = 0
         self.loopStack = self.Stack()
         self.outputBuffer = ''
+    
     
     @staticmethod
     def i8_add(a, b):
@@ -61,100 +106,150 @@ class SephirahInterpreter:
             return result - 0x100
         return result
     
-    def handle_new(self):
+    
+    def tapeLength(self):
+        """返回纸带长度"""
+        return len(self.tape)
+    
+    
+    def getCell(self, d=0):
+        """返回单元格内的数值，0代表当前格，-1代表左侧格，1代表右侧格"""
+        if d <= -2 or d >= 2:
+            raise ValueError("getCell() can only accept -1, 0, or 1")
+        
+        if d == -1 and self.p == 0:
+            self.createLeft()
+        if d == 1 and self.p == self.tapeLength() - 1:
+            self.createRight()
+        
+        return self.tape[self.p + d]
+    
+    def getCellIsSeph(self, d=0):
+        """返回单元格内是不是Sephirah，0代表当前格，-1代表左侧格，1代表右侧格"""
+        if d <= -2 or d >= 2:
+            raise ValueError("getCellIsSeph() can only accept -1, 0, or 1")
+        
+        if d == -1 and self.p == 0:
+            self.createLeft()
+        if d == 1 and self.p == self.tapeLength() - 1:
+            self.createRight()
+        
+        return self.tapeIsSeph[self.p + d]
+    
+    def setCell(self, val, d=0):
+        """设置当前单元格的值，0代表当前格，-1代表左侧格，1代表右侧格"""
+        if d <= -2 or d >= 2:
+            raise ValueError("setCell() can only accept -1, 0, or 1")
+        
+        if d == -1 and self.p == 0:
+            self.createLeft()
+        if d == 1 and self.p == self.tapeLength() - 1:
+            self.createRight()
+        
+        self.tape[self.p + d] = val
+    
+    def setCellIsSeph(self, val):
+        """设置当前单元格是否为Sephirah"""
+        self.tapeIsSeph[self.p] = val
+    
+    
+    def createLeft(self, initVal=0, isSeph=False):
+        """在左侧创建新单元格，同时指针不动"""
+        self.tape.insert(0, initVal)
+        self.tapeIsSeph.insert(0, isSeph)
+        self.p += 1
+        
+    def createRight(self, initVal=0, isSeph=False):
+        """在右侧创建新单元格，同时指针不动"""
+        self.tape.append(initVal)
+        self.tapeIsSeph.append(isSeph)
+        
+    def moveLeft(self):
+        """指针向左移动1格"""
+        if self.p == 0:
+            self.createLeft()
+        self.p -= 1
+    
+    def moveRight(self):
+        """指针向右移动1格"""
+        if self.p == self.tapeLength() - 1:
+            self.createRight()
+        self.p += 1
+    
+    
+    def handleNew(self):
         """每次跳转到新的纸带格时检查该格是不是Sephirah，如果是则需要立即执行该Sephirah。"""
-        if self.tapeIsSeph[self.p]:
-            self.interpreter(self.tape[self.p] % 10)
+        if self.getCellIsSeph():
+            self.interpreter(self.getCell() % 10)
+    
     
     def interpreter(self, seph):
         """Sephirah指令的解释器。"""
-        if seph == 0:
+        if seph == 0: # 0
             pass
         
-        elif seph == 1:
-            if self.tapeIsSeph[self.p]:
+        elif seph == 1: # +
+            if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
-            self.tape[self.p] = self.i8_add(self.tape[self.p], 1)
+            self.setCell(self.i8_add(self.getCell(), 1))
                 
-        elif seph == 2:
-            self.tapeIsSeph[self.p] = True
+        elif seph == 2: # ^
+            self.setCellIsSeph(True)
             
-        elif seph == 3:
-            self.tapeIsSeph[self.p] = False
+        elif seph == 3: # v
+            self.setCellIsSeph(False)
             
-        elif seph == 4:
+        elif seph == 4: # (
             self.loopStack.push(self.progCnt)
-            # self.loopStack.print()
             
-        elif seph == 5:
-            if self.tape[self.p] != 0:
+        elif seph == 5: # )
+            if self.getCell() != 0:
                 if self.loopStack.empty():
                     raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Sephirah ")" has nowhere to go.')
                 else:
-                    # x = self.progCnt
-                    # self.progCnt = self.loopStack.peek() - 1
-                    # self.loopStack.pop()
-                    # self.loopStack.print()
                     self.progCnt = self.loopStack.pop() - 1
-                    # print(f"{x + 1} line ) to {self.progCnt + 1}")
-                    # self.loopStack.print()
-                    # return
             else:
                 if not self.loopStack.empty():
                     self.loopStack.pop()
                     
-        elif seph == 6:
-            if self.tapeIsSeph[self.p]:
+        elif seph == 6: # g
+            if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
             else:
-                steps = self.tape[self.p]
+                steps = self.getCell()
                 if steps >= 0:
                     for _ in range(steps):
-                        if self.p == len(self.tape) - 1:
-                            self.tape.append(0)
-                            self.tapeIsSeph.append(False)
-                        self.p += 1
+                        self.moveRight()
                 else:
                     for _ in range(abs(steps)):
-                        if self.p == 0:
-                            self.tape.insert(0, 0)
-                            self.tapeIsSeph.insert(0, False)
-                        else:
-                            self.p -= 1
-                self.handle_new()
+                        self.moveLeft()
+                self.handleNew()
         
-        elif seph == 7:
-            if self.tapeIsSeph[self.p]:
+        elif seph == 7: # a
+            if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
             try:
-                char = chr(self.tape[self.p])
-                self.outputBuffer += char
+                self.outputBuffer += chr(self.getCell())
             except ValueError:
                 pass
         
-        elif seph == 8:
-            if self.tapeIsSeph[self.p]:
+        elif seph == 8: # -
+            if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
-            if self.tape[self.p] > 0:
-                if self.p == 0:
-                    self.tape.insert(0, 0)
-                    self.tapeIsSeph.insert(0, False)
-                    self.p += 1
-                self.tape[self.p - 1] = self.i8_sub(self.tape[self.p - 1], self.tape[self.p])
+            if self.getCell() > 0:
+                self.setCell(self.i8_sub(self.getCell(-1), self.getCell()), d=-1)
             else:
-                if self.p == len(self.tape) - 1:
-                    self.tape.append(0)
-                    self.tapeIsSeph.append(False)
-                self.tape[self.p + 1] = self.i8_sub(self.tape[self.p + 1], self.tape[self.p])
-            self.tape[self.p] = 0
+                self.setCell(self.i8_sub(self.getCell(1), self.getCell()), d=1)
+            self.setCell(0)
         
-        elif seph == 9:
-            if self.tapeIsSeph[self.p]:
+        elif seph == 9: # n
+            if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
-            self.tape[self.p] = self.i8_add(self.tape[self.p], len(self.tape))
+            self.setCell(self.i8_add(self.getCell(), self.tapeLength()))
             
         else:
             raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Undefined Sephirah number.')
+    
     
     def createDebugLine(self, add=1):
         """创建一行调试信息"""
@@ -168,45 +263,44 @@ class SephirahInterpreter:
         debugLine += '                 ' + '     ' * self.p + '   ^'
         return debugLine
     
-    def run(self, debug=0, longTapeWarning=-1, mrkOnly = False):
+    
+    def run(self):
         """
         运行Sephirah程序。
-        
-        Args:
-            debug: 是否开启调试模式
-            longTapeWarning: 纸带长度警告阈值，-1表示不检查
         """
         # 变量初始化
         self.reset()
         
         endByZero = None # 标志变量，检测程序是否因为遇到行中0而结束。
-        tapeTooLong = False 
+        tapeTooLong = False # 标志变量，检测程序是否因为长纸带警报而结束。
+        
+        runOp = self.RuntimeOptions(self.codeLines[0]) # 运行选项
         
         debugLog = [] # 调试信息
         
-        if debug > 0:
-            if mrkOnly:
+        if runOp.debug:
+            if runOp.mrkOnly:
                 print(f'===Running Sephirah code [DEBUG MODE - Mark Only] started===')
             else:
                 print(f'===Running Sephirah code [DEBUG MODE] started===')
         else:
             print(f'===Running Sephirah code started===')
         
-        if not mrkOnly and debug > 0:
-            debugLine = self.createDebugLine()
-            if debug < 3:
+        if runOp.debug and (not runOp.mrkOnly):
+            debugLine = self.createDebugLine(add=0)
+            if runOp.printOut:
                     print(debugLine)
-            if debug >= 2:
+            if runOp.log:
                 debugLog.append(debugLine)
             
         while self.progCnt < self.progLen:
             line = self.codeLines[self.progCnt]
             
-            if 'mrk' in line.lower() and debug > 0 and mrkOnly:
-                debugLine = self.createDebugLine(add=0)
-                if debug < 3:
+            if ('mrk' in line.lower()) and runOp.debug and runOp.mrkOnly:
+                debugLine = self.createDebugLine()
+                if runOp.printOut:
                     print(debugLine)
-                if debug >= 2:
+                if runOp.log:
                     debugLog.append(debugLine)
             
             if line[0] != '0':
@@ -218,31 +312,23 @@ class SephirahInterpreter:
                 # 如果没有移动指令就报错
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: This line has no or too many "." "<" or ">" command.')
             
+            
             for i in range(len(line)):
                 ch = line[i]
                 
                 if ch == '.':
                     # 点指令：原地移动
-                    self.handle_new()
+                    self.handleNew()
                 
                 elif ch == '<':
                     # 左移指令：向左移动一格
-                    if self.p == 0:
-                        self.tape.insert(0, 0)
-                        self.tapeIsSeph.insert(0, False)
-                    else:
-                        self.p -= 1
-                        self.handle_new()
+                    self.moveLeft()
+                    self.handleNew()
                 
                 elif ch == '>':
                     # 右移指令：向右移动一格
-                    if self.p == len(self.tape) - 1:
-                        self.tape.append(0)
-                        self.tapeIsSeph.append(False)
-                        self.p += 1
-                    else:
-                        self.p += 1
-                        self.handle_new()
+                    self.moveRight()
+                    self.handleNew()
                 
                 elif ch == '0':
                     if i == 0:
@@ -252,7 +338,7 @@ class SephirahInterpreter:
                         break 
                 
                 elif ch in '+^v()ga-n':
-                    self.interpreter(self.instruction_map[ch])
+                    self.interpreter(self.SEPH_MAP[ch])
                     
                 elif ch == '\n' or ch == ' ':
                     pass
@@ -263,16 +349,15 @@ class SephirahInterpreter:
                 else:
                     raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Undefined symbol "{ch}".')
             
-            if not mrkOnly and debug > 0:
+            if runOp.debug and (not runOp.mrkOnly):
                 debugLine = self.createDebugLine()
-                if debug < 3:
+                if runOp.printOut:
                     print(debugLine)
-                if debug >= 2:
+                if runOp.log:
                     debugLog.append(debugLine)
                 
-            if longTapeWarning >= 0 and len(self.tape) >= longTapeWarning:
-                # print(len(self.tape))
-                # raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: The tape is too long (more than {longTapeWarning} cells).')
+            if runOp.ltw >= 0 and self.tapeLength() >= runOp.ltw:
+                # raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: The tape is too long (more than {ltw} cells).')
                 tapeTooLong = True
                 break 
             
@@ -281,20 +366,21 @@ class SephirahInterpreter:
             
             self.progCnt += 1
             
-        if self.outputBuffer != '' and not debug:
+        if self.outputBuffer != '' and (not runOp.debug):
             print(self.outputBuffer)
         
         if endByZero is not None:
             print(f'===Running Sephirah code stopped by Sephirah "0" in Line {endByZero + 1}===')
         elif tapeTooLong:
-            print(f'===Running Sephirah code stopped because the tape is too long (more than {longTapeWarning} cells)===')
+            print(f'===Running Sephirah code stopped because the tape is too long (more than {runOp.ltw} cells)===')
         else:
             print('===Running Sephirah code finished===')
         
-        if debug >= 2:
-            with open('debug.log', 'w', encoding='utf-8') as file:
+        if runOp.log:
+            with open(runOp.logName, 'w', encoding='utf-8') as file:
                 file.write('\n'.join(debugLog))
-            print('Debug log written into file "debug.log".')
+            print(f'Debug log written into file "{runOp.logName}".')
+
 
 if __name__ == "__main__":
     fileName = "code.seph"
@@ -303,33 +389,7 @@ if __name__ == "__main__":
         codeLines = file.readlines()
 
     if codeLines is None:
-        raise FileNotFoundError(f'Connot find Sephirah code file: "{FILENAME}".')
-
-    debugMode = 0
-    if 'debugout' in codeLines[0].lower():
-        debugMode = 2
-    elif 'debuglog' in codeLines[0].lower():
-        debugMode = 3
-    elif 'debug' in codeLines[0].lower():
-        debugMode= 1
-    
-    mrkOnlyMode = False
-    if 'mrkonly' in codeLines[0].lower():
-        mrkOnlyMode = True
-
-    longTapeWarningMode = -1
-    if 'ltw16' in codeLines[0].lower():
-        longTapeWarningMode = 16
-    elif 'ltw32' in codeLines[0].lower():
-        longTapeWarningMode = 32
-    elif 'ltw64' in codeLines[0].lower():
-        longTapeWarningMode = 64
-    elif 'ltw128' in codeLines[0].lower():
-        longTapeWarningMode = 128
-    elif 'ltw256' in codeLines[0].lower():
-        longTapeWarningMode = 256
-    elif 'ltw' in codeLines[0].lower():
-        longTapeWarningMode = 64
+        raise FileNotFoundError(f'Connot find Sephirah code file: "{fileName}".')
 
     interp = SephirahInterpreter(codeLines)
-    interp.run(debug=debugMode, longTapeWarning=longTapeWarningMode, mrkOnly = mrkOnlyMode)
+    interp.run()
