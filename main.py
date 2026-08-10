@@ -74,8 +74,17 @@ class SephirahInterpreter:
     
     def __init__(self, codeLines):
         """初始化解释器"""
+
         self.codeLines = codeLines
         self.progLen = len(codeLines)
+
+        self.progCnt = 0
+        self.tape = [0]
+        self.tapeIsSeph = [False]
+        self.p = 0
+        self.loopStack = None
+        self.outputBuffer = ''
+
         self.reset()
     
     def reset(self):
@@ -86,8 +95,8 @@ class SephirahInterpreter:
         self.p = 0
         self.loopStack = self.Stack()
         self.outputBuffer = ''
-    
-    
+
+
     @staticmethod
     def i8_add(a, b):
         """有符号8位加法，自动溢出"""
@@ -178,11 +187,14 @@ class SephirahInterpreter:
     
     
     def handleNew(self):
-        """每次跳转到新的纸带格时检查该格是不是Sephirah，如果是则需要立即执行该Sephirah。"""
+        """每次跳转到新的纸带格时检查该格是不是Sephirah，如果是则需要立即执行该Sephirah。如果遇到了Sephirah “0”，则返回True表示停止。"""
         if self.getCellIsSeph():
-            self.interpreter(self.getCell() % 10)
-    
-    
+            if self.getCell() % 10 == 0:
+                return self.progCnt # 表示在某行处遇到了0
+            else:
+                self.interpreter(self.getCell() % 10)
+        return None
+
     def interpreter(self, seph):
         """Sephirah指令的解释器。"""
         if seph == 0: # 0
@@ -223,8 +235,10 @@ class SephirahInterpreter:
                 else:
                     for _ in range(abs(steps)):
                         self.moveLeft()
-                self.handleNew()
-        
+                halt = self.handleNew()
+                if halt is not None:
+                    return halt
+
         elif seph == 7: # a
             if self.getCellIsSeph():
                 raise self.SephirahRuntimeError(f'Error running Sephirah code, line {self.progCnt + 1}: Expected a number instead of a Sephirah.')
@@ -256,7 +270,7 @@ class SephirahInterpreter:
         debugLine = f'DEBUG: Line {(self.progCnt + add):04d} [ '
         for i in range(len(self.tape)):
             if self.tapeIsSeph[i]:
-                debugLine += f'[{"0+^v()ga-n"[self.tape[i] % 10]}] '
+                debugLine += f'S"{"0+^v()ga-n"[self.tape[i] % 10]}" '
             else:
                 debugLine += f'{self.tape[i]:04d} '
         debugLine += f'] OUTPUT: {self.outputBuffer}\n'
@@ -318,17 +332,23 @@ class SephirahInterpreter:
                 
                 if ch == '.':
                     # 点指令：原地移动
-                    self.handleNew()
+                    endByZero = self.handleNew()
+                    if endByZero is not None:
+                        break
                 
                 elif ch == '<':
                     # 左移指令：向左移动一格
                     self.moveLeft()
-                    self.handleNew()
+                    endByZero = self.handleNew()
+                    if endByZero is not None:
+                        break
                 
                 elif ch == '>':
                     # 右移指令：向右移动一格
                     self.moveRight()
-                    self.handleNew()
+                    endByZero = self.handleNew()
+                    if endByZero is not None:
+                        break
                 
                 elif ch == '0':
                     if i == 0:
@@ -338,7 +358,9 @@ class SephirahInterpreter:
                         break 
                 
                 elif ch in '+^v()ga-n':
-                    self.interpreter(self.SEPH_MAP[ch])
+                    endByZero = self.interpreter(self.SEPH_MAP[ch])
+                    if endByZero is not None: # 如果遇到了纸带上的0
+                        break
                     
                 elif ch == '\n' or ch == ' ':
                     pass
@@ -389,7 +411,7 @@ if __name__ == "__main__":
         codeLines = file.readlines()
 
     if codeLines is None:
-        raise FileNotFoundError(f'Connot find Sephirah code file: "{fileName}".')
+        raise FileNotFoundError(f'Cannot find Sephirah code file: "{fileName}".')
 
     interp = SephirahInterpreter(codeLines)
     interp.run()
